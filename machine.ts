@@ -4,7 +4,9 @@ import Pusher from 'pusher-js/react-native'
 
 import { PUSHER_KEY } from './keys'
 
-Pusher.logToConsole = false
+console.log({ PUSHER_KEY })
+
+// Pusher.logToConsole = false
 
 const createPusher = async () => {
     try {
@@ -19,17 +21,14 @@ const createPusher = async () => {
         return new Promise((res) =>
             pusher.connection.bind('connected', () => {
                 res(pusher)
-                pusher.connection.unbind_all()
             })
         )
     } catch (err) {
         return new Promise((rej) => rej(err))
     }
-
-    // await new Promise(res => setTimeout(res, 2000))
 }
 
-export const pusheenMachine = Machine(
+export const pusherMachine = Machine(
     {
         initial: 'idle',
         context: {
@@ -40,19 +39,62 @@ export const pusheenMachine = Machine(
         states: {
             idle: {
                 on: {
-                    CONNECT: 'loading',
+                    CONNECT: 'initializing',
                 },
             },
-            connected: {},
-            loading: {
-                invoke: {
-                    src: createPusher,
-                    onDone: { target: 'connected', actions: ['setPusher', 'setChannel'] },
-                    onError: { target: 'failed', actions: ['setErrorMessage'] },
+            connected: {
+                id: 'connected',
+            },
+            initializing: {
+                initial: 'creatingInstance',
+                states: {
+                    creatingInstance: {
+                        invoke: {
+                            id: 'createPusher',
+                            src: createPusher,
+                            onDone: {
+                                target: 'subscribing',
+                                actions: ['setPusher'],
+                            },
+                            onError: {
+                                target: '#failed',
+                                actions: ['setErrorMessage'],
+                            },
+                        },
+                    },
+                    subscribing: {
+                        invoke: {
+                            id: 'subscribingToChannel',
+                            src: async (ctx) => {
+                                const channel = ctx?.pusher?.subscribe('hal')
+
+                                return new Promise((res, rej) => {
+                                    channel.bind(
+                                        'pusher:subscription_succeeded',
+                                        () => res(channel)
+                                    )
+                                    channel.bind(
+                                        'pusher:subscription_error',
+                                        (err) => rej(err)
+                                    )
+                                })
+                            },
+                            onDone: {
+                                target: '#connected',
+                                actions: ['setChannel'],
+                            },
+                            onError: {
+                                target: '#failed',
+                                actions: ['setErrorMessage'],
+                            },
+                        },
+                    },
                 },
             },
             offline: {},
-            failed: {},
+            failed: {
+                id: 'failed',
+            },
         },
     },
     {
@@ -61,7 +103,7 @@ export const pusheenMachine = Machine(
                 pusher: (ctx, event) => event.data,
             }),
             setChannel: assign({
-                channel: (ctx, event) => ctx.pusher?.subscribe('hal'),
+                channel: (ctx, event) => event.data,
             }),
             setErrorMessage: assign({
                 lastError: (ctx, event) => event.data,
