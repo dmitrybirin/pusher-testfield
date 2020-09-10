@@ -68,7 +68,6 @@ export const Beacon = () => {
         send('CONNECT')
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
-    console.log('should fail', state?.context?.shouldFail)
 
     return (
         <View
@@ -78,18 +77,44 @@ export const Beacon = () => {
                 justifyContent: 'center',
             }}
         >
-            <Switch
-                value={state?.context?.shouldFail}
-                onValueChange={() => send('SHOULD_FAIL_SWITCH')}
-            />
-            <Button
-                title="RECONNECT"
-                color="red"
-                onPress={() => send('RECONNECT')}
-            />
-            <Text
-                style={{ color: 'red' }}
-            >{`Error: ${state?.context?.lastError}`}</Text>
+            <View
+                style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    marginBottom: 50
+                }}
+            >
+                <View
+                    style={{
+                        width: 150,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderColor: 'red',
+                        borderBottomWidth: 2,
+                        padding: 10,
+                    }}
+                >
+                    <Text style={{ color: 'red' }}>Should Fail</Text>
+                    <Switch
+                        trackColor={{ false: 'green', true: 'red' }}
+                        value={state?.context?.shouldFail}
+                        onValueChange={(value) =>
+                            send('SHOULD_FAIL_SWITCH', { value })
+                        }
+                    />
+                </View>
+                <Button
+                    title="RESET"
+                    color="red"
+                    onPress={() => send('RESET')}
+                />
+                <Text
+                    style={{ color: 'red' }}
+                >{`Error: ${state?.context?.lastError}`}</Text>
+            </View>
             <TouchableOpacity
                 style={{
                     width: 200,
@@ -97,7 +122,6 @@ export const Beacon = () => {
                     borderRadius: 100,
                     backgroundColor: getColor(state),
                 }}
-                disabled={!state.matches('failed')}
                 onPress={() => send('RECONNECT')}
             >
                 <View

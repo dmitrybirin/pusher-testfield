@@ -78,6 +78,11 @@ export const pusherMachine = Machine(
             shouldFail: false,
         },
         on: {
+            RESET: {
+                target: 'idle',
+                actions: 'reset',
+            },
+            // TODO shouldn't be in the final version of course
             SHOULD_FAIL_SWITCH: {
                 actions: 'toggleShouldFail',
             },
@@ -93,6 +98,7 @@ export const pusherMachine = Machine(
             idle: {
                 on: {
                     CONNECT: 'initializing',
+                    RECONNECT: 'initializing',
                 },
             },
             connected: {
@@ -181,6 +187,13 @@ export const pusherMachine = Machine(
             stillHaveLives: (ctx) => Boolean(ctx.lives),
         },
         actions: {
+            reset: assign({
+                pusher: () => null,
+                channel: () => null,
+                lastError: () => null,
+                lives: () => CONNECTION_LIVES,
+                shouldFail: () => false,
+            }),
             setPusher: assign({
                 pusher: (ctx, event) => event.data,
             }),
@@ -191,16 +204,13 @@ export const pusherMachine = Machine(
                 lastError: (ctx, event) => event.data,
             }),
             removeLive: assign({
-                lives: (ctx, event) => {
-                    console.warn('removing live')
-                    return ctx.lives - 1
-                },
+                lives: (ctx) => ctx.lives - 1,
             }),
             resetLives: assign({
-                lives: (ctx, event) => CONNECTION_LIVES,
+                lives: (_) => CONNECTION_LIVES,
             }),
             toggleShouldFail: assign({
-                shouldFail: (ctx, event) => !ctx.shouldFail,
+                shouldFail: (ctx, event) => event.value,
             }),
             // saveNewEvent: assign({
             //     eventList: (ctx, event) => {
