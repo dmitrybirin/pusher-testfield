@@ -40,6 +40,15 @@ const createPusher = async (ctx) =>
         }
     })
 
+const subscribingToChannel = async (ctx) => {
+    const channel = ctx?.pusher?.subscribe('hal')
+
+    return new Promise((res, rej) => {
+        channel.bind('pusher:subscription_succeeded', () => res(channel))
+        channel.bind('pusher:subscription_error', (err) => rej(err))
+    })
+}
+
 const CONNECTION_LIVES = 3
 
 export const pusherMachine = Machine(
@@ -52,7 +61,7 @@ export const pusherMachine = Machine(
             lives: CONNECTION_LIVES,
             shouldFail: false,
         },
-        activities: 'network',
+        // activities: 'network',
         on: {
             RESET: 'disconnecting',
             // TODO shouldn't be in the final version of course
@@ -132,20 +141,7 @@ export const pusherMachine = Machine(
                         type: 'final',
                         invoke: {
                             id: 'subscribingToChannel',
-                            src: async (ctx) => {
-                                const channel = ctx?.pusher?.subscribe('hal')
-
-                                return new Promise((res, rej) => {
-                                    channel.bind(
-                                        'pusher:subscription_succeeded',
-                                        () => res(channel)
-                                    )
-                                    channel.bind(
-                                        'pusher:subscription_error',
-                                        (err) => rej(err)
-                                    )
-                                })
-                            },
+                            src: subscribingToChannel,
                             onDone: {
                                 target: '#connected',
                                 actions: ['setChannel', 'resetLives'],
