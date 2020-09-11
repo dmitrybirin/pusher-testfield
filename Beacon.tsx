@@ -7,7 +7,11 @@ import { pusherMachine } from './machine'
 Pusher.logToConsole = false
 
 const getColor = (state) => {
-    if (state.matches('initializing')) {
+    if (
+        state.matches('initializing') ||
+        state.matches('reconnecting') ||
+        state.matches('pusherLoading')
+    ) {
         return 'blue'
     }
     if (state.matches('idle')) {
@@ -30,6 +34,20 @@ const getColor = (state) => {
 }
 
 const getMessage = (state, message) => {
+    if (
+        state.matches('initializing') ||
+        state.matches('reconnecting') ||
+        state.matches('loading')
+    ) {
+        if (typeof state.value === 'string') {
+            return state.value
+        } else {
+            return Object.entries(state.value)
+                .map(([key, value]) => `${key}.${value}`)
+                .join('.')
+        }
+    }
+
     if (state.matches('failed') || state.matches('initializing')) {
         return state.context.lives
     }
@@ -55,12 +73,30 @@ export const Beacon = () => {
                 }
             })
 
-            state?.context?.pusher.connection.bind('error', (err) => {
-                send('FAILED', err)
-            })
+            state?.context?.pusher?.connection.bind(
+                'state_change',
+                (states) => {
+                    switch (states.current) {
+                        case 'connecting':
+                            send('PUSHER_CONNECTING')
+                            break
+                        case 'connected':
+                            send('PUSHER_CONNECTED')
+                            break
+                        case 'unavailable':
+                            send('PUSHER_UNAVAILABLE')
+                            break
+                        case 'failed':
+                            send('PUSHER_FAILED')
+                            break
+                        default:
+                            break
+                    }
+                }
+            )
 
-            state?.context?.pusher.connection.bind('failed', (err) => {
-                send('FAILED', err)
+            state?.context?.pusher.connection.bind('error', (err) => {
+                send('PUSHER_FAILED', err)
             })
         }
         return () => {
