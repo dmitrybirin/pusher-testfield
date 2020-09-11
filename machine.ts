@@ -1,45 +1,19 @@
 import { Machine, assign, send } from 'xstate'
+// import NetInfo from '@react-native-community/netinfo'
 
 import Pusher from 'pusher-js/react-native'
 
 import { PUSHER_KEY } from './keys'
 
-// binding: {
-//     invoke: {
-//         id: 'bind',
-//         src: (ctx) => (callback, onReceive) => {
-//             console.log('binding')
-//             // ctx.channel.bind('activate', (message) => {
-//             //     console.log('data', message)
-//             //     // assign({
-//             //     //     message: () => message,
-//             //     // })
-//             //     callback('NEW_MESSAGE')
-//             // })
-
-//             return 'activate'
-
-//             // return () => ctx.channel.unbind('activate')
-//         },
-//         onDone: [
-//             {
-//                 target: '#connected',
-//                 actions: 'saveNewEvent',
-//                 cond: 'hasNoOtherBindingsForEvent',
-//             },
-//             { target: '#connected' },
-//         ],
-//         onError: {
-//             target: '#failed',
-//             actions: ['handleErrorMessage'],
-//         },
-//     },
-// },
-// },
-
-console.log({ PUSHER_KEY })
-
 Pusher.logToConsole = false
+
+const disconnectPusher = async (ctx, event) => {
+    console.log('in disconnecting')
+    if (ctx.pusher) {
+        console.log('DICSONNECTING')
+        ctx.pusher.disconnect()
+    }
+}
 
 const createPusher = async (ctx) =>
     new Promise((res, rej) => {
@@ -49,8 +23,9 @@ const createPusher = async (ctx) =>
             }
 
             const pusher = new Pusher(PUSHER_KEY, {
-                enabledTransports: ['ws', 'wss'],
+                // enabledTransports: ['ws', 'wss'],
                 cluster: 'eu',
+                forceTLS: true,
             })
 
             if (ctx.shouldFail) {
@@ -77,11 +52,9 @@ export const pusherMachine = Machine(
             lives: CONNECTION_LIVES,
             shouldFail: false,
         },
+        activities: 'network',
         on: {
-            RESET: {
-                target: 'idle',
-                actions: 'reset',
-            },
+            RESET: 'disconnecting',
             // TODO shouldn't be in the final version of course
             SHOULD_FAIL_SWITCH: {
                 actions: 'toggleShouldFail',
@@ -93,9 +66,11 @@ export const pusherMachine = Machine(
             RECONNECT: {
                 target: '#initializing',
             },
+            OFFLINE: '#offline',
         },
         states: {
             idle: {
+                id: 'idle',
                 on: {
                     CONNECT: 'initializing',
                     RECONNECT: 'initializing',
@@ -106,8 +81,29 @@ export const pusherMachine = Machine(
             },
             initializing: {
                 id: 'initializing',
-                initial: 'creatingInstance',
+                initial: 'disconnecting',
                 states: {
+                    disconnecting: {
+                        invoke: {
+                            src: disconnectPusher,
+                            onDone: 'creatingInstance',
+                            onError: [
+                                {
+                                    target: '#initializing',
+                                    actions: [
+                                        'removeLive',
+                                        'handleErrorMessage',
+                                    ],
+                                    cond: 'stillHaveLives',
+                                },
+                                {
+                                    target: '#failed',
+                                    actions: ['handleErrorMessage'],
+                                },
+                            ],
+                        },
+                    },
+
                     creatingInstance: {
                         invoke: {
                             id: 'createPusher',
@@ -175,7 +171,18 @@ export const pusherMachine = Machine(
                     actions: () => console.log('done init'),
                 },
             },
-            offline: {},
+            disconnecting: {
+                invoke: {
+                    src: disconnectPusher,
+                    onDone: {
+                        target: 'idle',
+                        actions: ['reset'],
+                    },
+                },
+            },
+            offline: {
+                id: 'offline',
+            },
             failed: {
                 onEntry: 'resetLives',
                 id: 'failed',
@@ -183,6 +190,19 @@ export const pusherMachine = Machine(
         },
     },
     {
+        // activities: {
+        //     network: () => {
+        //         const removeListener = NetInfo.addEventListener((state) => {
+        //             if (!state.isConnected) {
+        //                 console.warn('OFFLINE')
+        //                 send('OFFLINE')
+        //             }
+        //         })
+
+        //         // Return a function that stops the beeping activity
+        //         return removeListener
+        //     },
+        // },
         guards: {
             stillHaveLives: (ctx) => Boolean(ctx.lives),
         },

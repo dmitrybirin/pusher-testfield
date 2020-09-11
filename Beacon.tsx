@@ -25,6 +25,7 @@ const getColor = (state) => {
     if (state.matches('failed')) {
         return 'red'
     }
+
     return 'white'
 }
 
@@ -52,6 +53,10 @@ export const Beacon = () => {
                 if (!timer) {
                     setTimer(setTimeout(() => setMessage(''), 2500))
                 }
+            })
+
+            state?.context?.pusher.connection.bind('error', (err) => {
+                send('FAILED', err)
             })
 
             state?.context?.pusher.connection.bind('failed', (err) => {
@@ -83,7 +88,7 @@ export const Beacon = () => {
                     justifyContent: 'center',
                     borderColor: 'red',
                     borderWidth: 2,
-                    marginBottom: 50
+                    marginBottom: 50,
                 }}
             >
                 <View
