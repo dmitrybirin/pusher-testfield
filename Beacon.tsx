@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, Button, Switch } from 'react-native'
 import Pusher from 'pusher-js/react-native'
 import { useMachine } from '@xstate/react'
+import { useMachineFR } from './useMachineFR'
 import { pusherMachine } from './machine'
 
 Pusher.logToConsole = false
@@ -40,10 +41,12 @@ const getMessage = (state, message) => {
         state.matches('loading')
     ) {
         if (typeof state.value === 'string') {
-            return state.value
+            return `${state.value}\n${state.context.lives}`
         } else {
             return Object.entries(state.value)
-                .map(([key, value]) => `${key}.${value}`)
+                .map(
+                    ([key, value]) => `${key}\n${value}\n${state.context.lives}`
+                )
                 .join('.')
         }
     }
@@ -56,7 +59,7 @@ const getMessage = (state, message) => {
 }
 
 export const Beacon = () => {
-    const [state, send] = useMachine(pusherMachine)
+    const [state, send] = useMachineFR(pusherMachine)
     const [message, setMessage] = useState('')
     const [timer, setTimer] = useState(0)
 
@@ -65,7 +68,7 @@ export const Beacon = () => {
         //     name:'activate',
         //     handler: (data) =>
         // })
-        if (state.matches('connected')) {
+        if (state?.context?.pusher?.connection?.socket_id) {
             state?.context?.channel?.bind('activate', (data: string) => {
                 setMessage(data)
                 if (!timer) {
@@ -94,16 +97,27 @@ export const Beacon = () => {
                     }
                 }
             )
+            // setTimeout(() => send('PUSHER_ERROR', { error: 'foo' }), 2000)
+            
 
-            state?.context?.pusher.connection.bind('error', (err) => {
-                send('PUSHER_FAILED', err)
+            state?.context?.pusher?.connection.bind('error', (error) => {
+                console.log('pusher error', +new Date(), error)
+                const code =
+                    error?.data?.code || error?.error?.data?.code || error?.code
+
+                if (code && code >= 4000 && code <= 4099) {
+                    console.log('URECOVERABLE!')
+                    send('PUSHER_ERROR', { error })
+                }
             })
         }
         return () => {
             state?.context?.channel?.unbind('activate')
+            state?.context?.pusher?.connection?.unbind('error')
+            state?.context?.pusher?.connection?.unbind('state_change')
             clearTimeout(timer)
         }
-    }, [state?.value])
+    }, [state?.context?.pusher?.connection?.socket_id])
 
     useEffect(() => {
         send('CONNECT')
@@ -177,6 +191,7 @@ export const Beacon = () => {
                             color: 'white',
                             fontSize: 20,
                             fontWeight: 'bold',
+                            textAlign: 'center',
                             textTransform: 'uppercase',
                         }}
                     >
