@@ -62,20 +62,9 @@ export const Beacon = () => {
     const [state, send] = useMachineFR(pusherMachine)
     const [message, setMessage] = useState('')
     const [timer, setTimer] = useState(0)
-
+    console.log({ message })
     useEffect(() => {
-        // send('BIND', {
-        //     name:'activate',
-        //     handler: (data) =>
-        // })
         if (state?.context?.pusher?.connection?.socket_id) {
-            state?.context?.channel?.bind('activate', (data: string) => {
-                setMessage(data)
-                if (!timer) {
-                    setTimer(setTimeout(() => setMessage(''), 2500))
-                }
-            })
-
             state?.context?.pusher?.connection.bind(
                 'state_change',
                 (states) => {
@@ -98,7 +87,6 @@ export const Beacon = () => {
                 }
             )
             // setTimeout(() => send('PUSHER_ERROR', { error: 'foo' }), 2000)
-            
 
             state?.context?.pusher?.connection.bind('error', (error) => {
                 console.log('pusher error', +new Date(), error)
@@ -112,12 +100,32 @@ export const Beacon = () => {
             })
         }
         return () => {
-            state?.context?.channel?.unbind('activate')
             state?.context?.pusher?.connection?.unbind('error')
             state?.context?.pusher?.connection?.unbind('state_change')
             clearTimeout(timer)
         }
     }, [state?.context?.pusher?.connection?.socket_id])
+
+    useEffect(() => {
+        state?.context?.channel?.bind('activate', (data: string) => {
+            console.log({ data })
+            setMessage(data)
+            if (timer) {
+                clearTimeout(timer)
+            }
+
+            setTimer(
+                setTimeout(() => {
+                    setMessage('')
+                    setTimer(0)
+                }, 2500)
+            )
+        })
+        return () => {
+            state?.context?.channel?.unbind('activate')
+            clearTimeout(timer)
+        }
+    }, [state.context.channel, timer])
 
     useEffect(() => {
         send('CONNECT')
