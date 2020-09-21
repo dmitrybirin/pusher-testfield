@@ -5,8 +5,6 @@ import { Machine, assign } from 'xstate'
 import Pusher from 'pusher-js/react-native'
 
 import { PUSHER_KEY } from './keys'
-import { raise, send } from 'xstate/lib/actions'
-// import { raise, send } from 'xstate/lib/actionTypes'
 
 Pusher.logToConsole = false
 
@@ -42,7 +40,7 @@ const createPusher = async (ctx) =>
                             console.log('AUTHORIZING WITH', socketId)
                             try {
                                 const result = await fetch(
-                                    'http://172.28.134.102:4444/auth',
+                                    'http://192.168.31.164:4444/auth',
                                     {
                                         method: 'POST',
                                         headers: {
@@ -128,68 +126,23 @@ const subscribingToChannel = async (ctx) => {
 
 const CONNECTION_LIVES = 3
 
-const creatingInstance = {
-    invoke: {
-        id: 'createPusher',
-        src: createPusher,
-        onDone: {
-            target: 'subscribing',
-            actions: ['setPusher'],
-        },
-        onError: [
-            {
-                target: '#reconnecting',
-                actions: ['removeLive', 'handleErrorMessage'],
-                cond: 'stillHaveLives',
-            },
-            {
-                target: '#failed',
-                actions: ['handleErrorMessage'],
-            },
-        ],
-    },
-}
-
-const subscribing = {
-    type: 'final',
-    invoke: {
-        id: 'subscribingToChannel',
-        src: subscribingToChannel,
-        onDone: {
-            target: '#connected',
-            actions: ['setChannel', 'resetLives'],
-        },
-        onError: [
-            {
-                target: '#reconnecting',
-                actions: ['removeLive', 'handleErrorMessage'],
-                cond: 'stillHaveLives',
-            },
-            {
-                target: '#failed',
-                actions: ['handleErrorMessage'],
-            },
-        ],
-    },
-}
-
-const disconnecting = {
-    invoke: {
-        src: disconnectPusher,
-        onDone: 'creatingInstance',
-        onError: [
-            {
-                target: '#initializing',
-                actions: ['removeLive', 'handleErrorMessage'],
-                cond: 'stillHaveLives',
-            },
-            {
-                target: '#failed',
-                actions: ['handleErrorMessage'],
-            },
-        ],
-    },
-}
+// const disconnecting = {
+//     invoke: {
+//         src: disconnectPusher,
+//         onDone: 'creatingInstance',
+//         onError: [
+//             {
+//                 target: '#initializing',
+//                 actions: ['removeLive', 'handleErrorMessage'],
+//                 cond: 'stillHaveLives',
+//             },
+//             {
+//                 target: '#failed',
+//                 actions: ['handleErrorMessage'],
+//             },
+//         ],
+//     },
+// }
 
 export const pusherMachine = Machine(
     {
@@ -202,51 +155,65 @@ export const pusherMachine = Machine(
             shouldFail: false,
         },
         on: {
-            RESET: 'disconnecting',
+            RESET: '.loading.disconnecting',
             // TODO shouldn't be in the final version of course
             SHOULD_FAIL_SWITCH: {
                 actions: 'toggleShouldFail',
             },
             // TODO should it be only in failed state?
-            RECONNECT: '#reconnecting',
-            OFFLINE: '#offline',
+            RECONNECT: '.loading.reconnecting',
+            OFFLINE: '.offline',
         },
         states: {
             idle: {
                 id: 'idle',
                 on: {
-                    CONNECT: 'initializing',
+                    CONNECT: 'loading.creatingInstance',
                 },
             },
             connected: {
+                entry: 'resetLives',
                 on: {
                     PUSHER_ERROR: [
                         {
-                            target: '#reconnecting',
+                            target: 'loading.reconnecting',
                             actions: ['removeLive', 'handleErrorMessage'],
                             cond: 'stillHaveLives',
                         },
                         {
-                            target: '#failed',
+                            target: 'failed',
                             actions: ['handleErrorMessage'],
                         },
                     ],
                 },
                 id: 'connected',
                 on: {
-                    PUSHER_CONNECTING: 'pusherLoading',
-                    PUSHER_UNVAILABLE: 'pusherLoading',
-                    PUSHER_FAILED: {
-                        target: '#reconnecting',
-                        actions: 'handleErrorMessage',
-                    },
+                    PUSHER_CONNECTING: 'loading.pusherLoading',
+                    PUSHER_UNVAILABLE: 'loading.pusherLoading',
+                    PUSHER_FAILED: [
+                        {
+                            target: 'loading.reconnecting',
+                            actions: ['removeLive', 'handleErrorMessage'],
+                            cond: 'stillHaveLives',
+                        },
+                        {
+                            target: 'failed',
+                            actions: ['handleErrorMessage'],
+                        },
+                    ],
                 },
             },
-            initializing: {
+            failed: {
+                entry: 'resetLives',
+                id: 'failed',
+            },
+            loading: {
+                id: 'loading',
+                // initial: 'creatingInstance',
                 on: {
                     PUSHER_ERROR: [
                         {
-                            target: '#reconnecting',
+                            target: '.reconnecting',
                             actions: ['removeLive', 'handleErrorMessage'],
                             cond: 'stillHaveLives',
                         },
@@ -256,89 +223,112 @@ export const pusherMachine = Machine(
                         },
                     ],
                 },
-                id: 'initializing',
-                initial: 'creatingInstance',
                 states: {
-                    creatingInstance,
-                    subscribing,
-                },
-            },
-            reconnecting: {
-                on: {
-                    PUSHER_ERROR: [
-                        {
-                            target: '#reconnecting',
-                            actions: ['removeLive', 'handleErrorMessage'],
-                            cond: 'stillHaveLives',
+                    creatingInstance: {
+                        invoke: {
+                            id: 'createPusher',
+                            src: createPusher,
+                            onDone: {
+                                target: 'subscribing',
+                                actions: ['setPusher'],
+                            },
+                            onError: [
+                                {
+                                    target: 'reconnecting',
+                                    actions: [
+                                        'removeLive',
+                                        'handleErrorMessage',
+                                    ],
+                                    cond: 'stillHaveLives',
+                                },
+                                {
+                                    target: '#failed',
+                                    actions: ['handleErrorMessage'],
+                                },
+                            ],
                         },
-                        {
-                            target: '#failed',
-                            actions: ['handleErrorMessage'],
-                        },
-                    ],
-                },
-                id: 'reconnecting',
-                initial: 'disconnecting',
-                states: {
-                    disconnecting,
-                    creatingInstance,
-                    subscribing,
-                },
-            },
-            pusherLoading: {
-                // TODO setTimeout for no events
-                on: {
-                    PUSHER_ERROR: [
-                        {
-                            target: '#reconnecting',
-                            actions: ['removeLive', 'handleErrorMessage'],
-                            cond: 'stillHaveLives',
-                        },
-                        {
-                            target: '#failed',
-                            actions: ['handleErrorMessage'],
-                        },
-                    ],
-                    PUSHER_CONNECTED: 'connected',
-                    LOADING_TIMEOUT: 'failed',
-                },
-            },
-            disconnecting: {
-                invoke: {
-                    src: disconnectPusher,
-                    onDone: {
-                        target: 'idle',
-                        actions: ['reset'],
                     },
-                    onError: {
-                        actions: (_, e) => console.log(e.data),
-                        target: '#failed',
+                    subscribing: {
+                        id: 'subscribing',
+                        type: 'final',
+                        invoke: {
+                            id: 'subscribingToChannel',
+                            src: subscribingToChannel,
+                            onDone: {
+                                target: '#connected',
+                                actions: ['setChannel'],
+                            },
+                            onError: [
+                                {
+                                    target: 'reconnecting',
+                                    actions: [
+                                        'removeLive',
+                                        'handleErrorMessage',
+                                    ],
+                                    cond: 'stillHaveLives',
+                                },
+                                {
+                                    target: '#failed',
+                                    actions: ['handleErrorMessage'],
+                                },
+                            ],
+                        },
+                    },
+                    pusherLoading: {
+                        id: 'pusherLoading',
+                        // TODO setTimeout for no events
+                        on: {
+                            PUSHER_CONNECTED: '#connected',
+                            LOADING_TIMEOUT: '#failed',
+                        },
+                    },
+                    reconnecting: {
+                        id: 'reconnecting',
+                        invoke: {
+                            src: disconnectPusher,
+                            onDone: {
+                                target: 'creatingInstance',
+                                actions: ['reset'],
+                            },
+                            onError: {
+                                target: [
+                                    {
+                                        target: 'reconnecting',
+                                        actions: [
+                                            'removeLive',
+                                            'handleErrorMessage',
+                                        ],
+                                        cond: 'stillHaveLives',
+                                    },
+                                    {
+                                        target: '#failed',
+                                        actions: ['handleErrorMessage'],
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                    disconnecting: {
+                        invoke: {
+                            src: disconnectPusher,
+                            onDone: {
+                                target: '#idle',
+                                actions: ['reset'],
+                            },
+                            onError: {
+                                actions: (_, e) => console.log(e.data),
+                                target: '#failed',
+                            },
+                        },
                     },
                 },
             },
             offline: {
                 id: 'offline',
             },
-            failed: {
-                onEntry: 'resetLives',
-                id: 'failed',
-            },
         },
     },
     {
-        // activities: {
-        //     network: () => {
-        //         const removeListener = NetInfo.addEventListener((state) => {
-        //             if (!state.isConnected) {
-        //                 console.warn('OFFLINE')
-        //                 send('OFFLINE')
-        //             }
-        //         })
-
-        //         // Return a function that stops the beeping activity
-        //         return removeListener
-        //     },
-        // },
         guards: {
             stillHaveLives: (ctx) => {
                 console.log('STILL HAVE LIVES?')
@@ -350,8 +340,7 @@ export const pusherMachine = Machine(
                 pusher: () => null,
                 channel: () => null,
                 lastError: () => null,
-                lives: () => CONNECTION_LIVES,
-                shouldFail: () => false,
+                // shouldFail: () => false,
             }),
             setPusher: assign({
                 pusher: (ctx, event) => event.data,

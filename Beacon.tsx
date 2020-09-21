@@ -8,11 +8,7 @@ import { pusherMachine } from './machine'
 Pusher.logToConsole = false
 
 const getColor = (state) => {
-    if (
-        state.matches('initializing') ||
-        state.matches('reconnecting') ||
-        state.matches('pusherLoading')
-    ) {
+    if (state.matches('loading')) {
         return 'blue'
     }
     if (state.matches('idle')) {
